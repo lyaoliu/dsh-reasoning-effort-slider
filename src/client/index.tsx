@@ -41,8 +41,12 @@ function currentModel(state: ModelDirectoryState): any {
 
 function sliderLevels(state: ModelDirectoryState): EffortLevel[] {
   const model = currentModel(state)
-  const efforts = model?.reasoning?.efforts
-  return efforts !== undefined && efforts.length >= 2 ? efforts.map((e: string) => ({ id: e, name: e })) : []
+  // 直接从 model 对象获取 reasoningEfforts
+  const efforts = model?.reasoningEfforts
+  if (!efforts || typeof efforts !== 'object') return []
+  return Object.entries(efforts)
+    .map(([id, name]) => ({ id, name: name as string ?? id }))
+    .filter((l) => l.name !== 'null') // 过滤掉值为 null 的档位
 }
 
 function effectiveEffortIndex(levels: EffortLevel[], state: ModelDirectoryState): number {
