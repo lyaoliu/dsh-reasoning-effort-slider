@@ -32,10 +32,16 @@ function makeAdaptationService(rpc: HostRpc | undefined): AdaptationService | nu
   }
 }
 
+/** Get the current model from the directory groups. */
+function currentModel(state: ModelDirectoryState): any {
+  if (state.current === null) return undefined
+  const group = state.groups?.find((candidate: any) => candidate.id === state.current?.provider)
+  return group?.models?.find((candidate: any) => candidate.id === state.current?.model)
+}
+
 function sliderLevels(state: ModelDirectoryState): EffortLevel[] {
-  // Access reasoning.efforts via any to avoid TypeScript issues
-  const current = state.current as any
-  const efforts = current?.reasoning?.efforts
+  const model = currentModel(state)
+  const efforts = model?.reasoning?.efforts
   return efforts !== undefined && efforts.length >= 2 ? efforts.map((e: string) => ({ id: e, name: e })) : []
 }
 
