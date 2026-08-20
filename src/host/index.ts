@@ -1,4 +1,5 @@
 import type { Plugin } from '@deepseek-ai/cordis'
+import type { EffortLevel } from '../types.js'
 import { getEffortLevels, hasReasoningEfforts } from './knowledge.js'
 import type { AdaptGuidance, PluginConfig } from '../types.js'
 
@@ -15,7 +16,7 @@ function readPluginConfig(settings: any): PluginConfig {
   }
 }
 
-export const plugin: Plugin = {
+export const plugin = {
   id: PLUGIN_ID,
   name: 'dsh-reasoning-effort-slider',
   apply(ctx: any) {
@@ -30,7 +31,7 @@ export const plugin: Plugin = {
 
     harness.handle(RPC_CHANNEL, 'diagnose', async (args: { provider: string; model: string }) => {
       const { provider, model } = args
-      const levels = getEffortLevels(provider, model, config.levels)
+      const levels = getEffortLevels(provider, model, config.levels as EffortLevel[] | undefined)
       const hasEfforts = hasReasoningEfforts(provider, model)
 
       return {
