@@ -4,12 +4,12 @@
   "description": "DSH reasoning effort slider with 7 levels and cool visual effects",
   "type": "module",
   "packageManager": "pnpm@9.0.0",
-  "main": "lib/index.js",
-  "types": "lib/index.d.ts",
+  "main": "lib/host/index.js",
+  "types": "lib/host/index.d.ts",
   "exports": {
     ".": {
-      "types": "./lib/index.d.ts",
-      "default": "./lib/index.js"
+      "types": "./lib/host/index.d.ts",
+      "default": "./lib/host/index.js"
     },
     "./client": {
       "types": "./lib/client/index.d.ts",
