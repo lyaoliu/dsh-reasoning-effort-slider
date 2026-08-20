@@ -41,9 +41,9 @@ function currentModel(state: ModelDirectoryState): any {
 
 function sliderLevels(state: ModelDirectoryState): EffortLevel[] {
   const model = currentModel(state)
-  // 参考插件的正确实现：从 model.reasoning.efforts 获取档位
+  // 参考插件实现：直接从 model.reasoning.efforts 获取档位（已经是 EffortLevel[] 格式）
   const efforts = model?.reasoning?.efforts
-  return efforts !== undefined && efforts.length >= 2 ? efforts.map((e: string) => ({ id: e, name: e })) : []
+  return efforts !== undefined && efforts.length >= 2 ? efforts : []
 }
 
 function effectiveEffortIndex(levels: EffortLevel[], state: ModelDirectoryState): number {
