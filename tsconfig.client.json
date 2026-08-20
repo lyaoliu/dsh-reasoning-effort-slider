@@ -2,9 +2,9 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "lib/client",
-    "rootDir": "src/client",
+    "rootDir": "src",
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
-  "include": ["src/client/**/*"]
+  "include": ["src/client/**/*", "src/types.ts"]
 }

@@ -30,7 +30,9 @@
     "build:client": "node scripts/build-client.mjs",
     "build:client-types": "tsc -p tsconfig.client.json",
     "watch": "tsc -p tsconfig.json --watch",
-    "watch:client": "node scripts/build-client.mjs --watch"
+    "watch:client": "node scripts/build-client.mjs --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dsh": {
     "bundle": {
