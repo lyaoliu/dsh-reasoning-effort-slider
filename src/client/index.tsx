@@ -57,9 +57,9 @@ function effectiveEffortIndex(levels: EffortLevel[], state: ModelDirectoryState)
   return Math.floor((levels.length - 1) / 2)
 }
 
-export const inject = ['slots', 'modelDirectories', 'connection']
+const inject = ['slots', 'modelDirectories', 'connection']
 
-export function apply(ctx: ClientContext) {
+function apply(ctx: ClientContext) {
   const slots = ctx.get('slots')
   if (!slots) return
 
