@@ -2,8 +2,8 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "lib",
-    "rootDir": "src/host",
+    "rootDir": "src",
     "jsx": "react-jsx"
   },
-  "include": ["src/host/**/*"]
+  "include": ["src/host/**/*", "src/types.ts"]
 }
