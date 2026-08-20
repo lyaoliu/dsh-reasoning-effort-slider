@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { CSS } from './styles.js'
-import type { EffortLevel } from '../types.js'
+import type { EffortLevel } from './types.js'
 
 interface EffortSliderProps {
   readonly levels: EffortLevel[]

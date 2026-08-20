@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import type { VisualEffect } from '../types.js'
+import type { VisualEffect } from './types.js'
 
 const ENABLED_STORAGE_KEY = 'dsh-reasoning-effort-slider.enabled'
 const EFFECT_STORAGE_KEY = 'dsh-reasoning-effort-slider.visual-effect'
