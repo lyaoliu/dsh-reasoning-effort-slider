@@ -1,4 +1,3 @@
-import type { Plugin } from '@deepseek-ai/cordis'
 import type { EffortLevel } from '../types.js'
 import { getEffortLevels, hasReasoningEfforts } from './knowledge.js'
 import type { AdaptGuidance, PluginConfig } from '../types.js'
@@ -16,7 +15,7 @@ function readPluginConfig(settings: any): PluginConfig {
   }
 }
 
-export const plugin = {
+const plugin = {
   id: PLUGIN_ID,
   name: 'dsh-reasoning-effort-slider',
   apply(ctx: any) {
@@ -65,3 +64,5 @@ export const plugin = {
     })
   },
 }
+
+export default plugin
