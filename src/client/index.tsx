@@ -6,7 +6,7 @@ import type { ModelDirectory, ModelDirectoryState } from '@deepseek-ai/dsh-clien
 import { EffortSlider } from './slider.js'
 import { SettingsPanel } from './settings.js'
 import { CSS } from './styles.js'
-import type { AdaptationService, EffortLevel } from '../types.js'
+import type { AdaptationService, EffortLevel } from './types.js'
 
 const SLOT = 'conversation.input.model'
 const SETTINGS_SLOT = 'settings.general.item'
