@@ -15,6 +15,7 @@
       "types": "./lib/client/index.d.ts",
       "default": "./lib/client/index.js"
     },
+    "./package.json": "./package.json",
     "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "files": [
@@ -25,7 +26,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "pnpm run build:host && pnpm run build:client && pnpm run build:client-types",
+    "build": "pnpm run build:host && pnpm run build:client-types && pnpm run build:client",
     "build:host": "tsc -p tsconfig.build.json",
     "build:client": "node scripts/build-client.mjs",
     "build:client-types": "tsc -p tsconfig.client.json",

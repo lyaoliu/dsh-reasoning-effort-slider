@@ -1,4 +1,4 @@
-import type { EffortLevel } from '../types.js'
+import type { EffortLevel, KnowledgeEffort } from '../types.js'
 
 /** Default 7-level configuration. */
 export const DEFAULT_LEVELS: EffortLevel[] = [
@@ -12,7 +12,7 @@ export const DEFAULT_LEVELS: EffortLevel[] = [
 ]
 
 /** Built-in model knowledge base. */
-export const MODEL_KNOWLEDGE: Record<string, { provider: string; model: string; efforts: EffortLevel[]; compat?: Record<string, unknown> }> = {
+export const MODEL_KNOWLEDGE: Record<string, { provider: string; model: string; efforts: KnowledgeEffort[]; compat?: Record<string, unknown> }> = {
   'glm-5.2': {
     provider: 'zai-coding-cn',
     model: 'glm-5.1',
@@ -42,6 +42,22 @@ export const MODEL_KNOWLEDGE: Record<string, { provider: string; model: string; 
       supportsReasoningEffort: true,
     },
   },
+  // Sensenova rejects the OpenAI `developer` role and only accepts
+  // low/medium/high/xhigh plus literal `none` (its "no thinking" wire value).
+  'deepseek-v4-flash': {
+    provider: 'sensenova',
+    model: 'deepseek-v4-flash',
+    efforts: [
+      { id: 'off', name: '关闭', wire: 'none' },
+      { id: 'low', name: '低', wire: 'low' },
+      { id: 'medium', name: '中', wire: 'medium' },
+      { id: 'high', name: '高', wire: 'high' },
+      { id: 'xhigh', name: '极高', wire: 'xhigh' },
+    ],
+    compat: {
+      supportsDeveloperRole: false,
+    },
+  },
 }
 
 /** Get effort levels for a model, falling back to defaults. */
@@ -62,9 +78,4 @@ export function getEffortLevels(
   }
 
   return DEFAULT_LEVELS
-}
-
-/** Check if a model has reasoning efforts declared. */
-export function hasReasoningEfforts(provider: string, model: string): boolean {
-  return getEffortLevels(provider, model).length >= 2
 }

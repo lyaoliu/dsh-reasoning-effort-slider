@@ -4,7 +4,7 @@ echo DSH Reasoning Effort Slider 插件安装程序
 echo ========================================
 echo.
 
-cd /d "C:\Users\LIULU\Desktop\dsh-reasoning-effort-slider"
+cd /d "%~dp0"
 
 echo 插件目录：%cd%
 echo.

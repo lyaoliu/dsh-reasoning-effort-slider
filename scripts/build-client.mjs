@@ -1,39 +1,65 @@
-import esbuild from 'esbuild'
-import { fileURLToPath } from 'url'
-import { dirname, join } from 'path'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { build, context } from 'esbuild'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const root = join(__dirname, '..')
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
+const temporary = resolve(root, '.client-build', 'client.cjs')
+const output = resolve(root, 'lib', 'client', 'index.js')
 
-const watch = process.argv.includes('--watch')
+await mkdir(dirname(temporary), { recursive: true })
+await mkdir(dirname(output), { recursive: true })
 
-const ctx = await esbuild.context({
-  entryPoints: [join(root, 'src/client/index.tsx')],
-  outfile: join(root, 'lib/client/index.js'),
+const wrap = (compiled) => `window.__ModuleLoader__.load({
+  id: ${JSON.stringify(packageJson.name)},
+  factory: (require) => {
+    var module = { exports: {} };
+    var exports = module.exports;
+${compiled}
+    return module.exports;
+  },
+});
+`
+
+/** After every esbuild emit, rewrite lib/client/index.js with the loader wrapper. */
+const wrapPlugin = {
+  name: 'wrap-module-loader',
+  setup(buildApi) {
+    buildApi.onEnd(async (result) => {
+      if (result.errors.length > 0) return
+      const compiled = await readFile(temporary, 'utf8')
+      await writeFile(output, wrap(compiled), 'utf8')
+    })
+  },
+}
+
+const common = {
+  entryPoints: [resolve(root, 'src', 'client', 'index.tsx')],
+  outfile: temporary,
   bundle: true,
-  format: 'esm',
+  format: 'cjs',
   platform: 'browser',
-  target: ['chrome100', 'firefox100', 'safari15'],
-  minify: false,
-  sourcemap: true,
-  plugins: [
-    {
-      name: 'module-loader',
-      setup(build) {
-        build.onLoad({ filter: /\.tsx$/ }, async (args) => {
-          const contents = await Deno.readTextFile(args.path)
-          return { contents, loader: 'tsx' }
-        })
-      },
-    },
+  target: 'es2022',
+  jsx: 'automatic',
+  sourcemap: false,
+  legalComments: 'none',
+  loader: {
+    '.png': 'dataurl',
+  },
+  external: [
+    'react',
+    'react/jsx-runtime',
+    '@deepseek-ai/*',
   ],
-})
+  plugins: [wrapPlugin],
+}
 
-if (watch) {
-  await ctx.watch()
-  console.log('Watching for changes...')
-} else {
+if (process.argv.includes('--watch')) {
+  const ctx = await context(common)
   await ctx.rebuild()
-  await ctx.dispose()
-  console.log('Build complete.')
+  await ctx.watch()
+  console.log('watching src/client -> lib/client/index.js (wrapped)')
+} else {
+  await build(common)
 }

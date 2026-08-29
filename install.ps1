@@ -58,30 +58,8 @@ if ($LASTEXITCODE -eq 0) {
 } else {
     Write-Host "插件安装失败，错误代码：$LASTEXITCODE" -ForegroundColor Red
     Write-Host ""
-    Write-Host "尝试手动安装..." -ForegroundColor Yellow
-    
-    # 手动添加配置
-    $configPath = "$env:USERPROFILE\.dsh\cordis.patch.yml"
-    Write-Host "配置文件路径：$configPath" -ForegroundColor Gray
-    
-    if (Test-Path $configPath) {
-        $configContent = Get-Content $configPath -Raw
-        if ($configContent -notmatch 'reasoning-effort-slider') {
-            Write-Host "正在更新配置文件..." -ForegroundColor Green
-            $newConfig = @"
-# dsh-reasoning-effort-slider bundle patch
-- insert:
-    - id: reasoning-effort-slider
-      name: 'dsh-reasoning-effort-slider'
-"@
-            Set-Content -Path $configPath -Value $newConfig -Encoding UTF8
-            Write-Host "配置文件已更新" -ForegroundColor Green
-        } else {
-            Write-Host "配置文件已包含该插件" -ForegroundColor Gray
-        }
-    } else {
-        Write-Host "错误：找不到配置文件 $configPath" -ForegroundColor Red
-    }
+    Write-Host "请手动排查 dsh plugin add 的报错；不要手工改写 ~/.dsh/cordis.patch.yml，" -ForegroundColor Yellow
+    Write-Host "整文件覆写会丢掉其他插件的 patch 行。" -ForegroundColor Yellow
 }
 
 Write-Host ""

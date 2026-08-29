@@ -4,6 +4,14 @@ export interface EffortLevel {
   readonly name: string
 }
 
+/**
+ * Knowledge-base effort level: `wire` overrides the value sent on the wire
+ * (`undefined` = derive: `null` for off, otherwise the id itself).
+ */
+export interface KnowledgeEffort extends EffortLevel {
+  readonly wire?: string | null
+}
+
 /** Host RPC result envelope. */
 export type ReRpcResult<T> =
   | { ok: true; value: T }
@@ -34,7 +42,14 @@ export interface AdaptationService {
 }
 
 /** Visual effect mode for the slider. */
-export type VisualEffect = 'radiation' | 'particles' | 'gradient'
+export type VisualEffect =
+  | 'radiation'
+  | 'particles'
+  | 'gradient'
+  | 'electric'
+  | 'flame'
+  | 'starfield'
+  | 'ripple'
 
 /** Plugin configuration. */
 export interface PluginConfig {

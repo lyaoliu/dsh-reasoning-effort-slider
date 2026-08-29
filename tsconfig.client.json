@@ -4,6 +4,7 @@
     "outDir": "lib/client",
     "rootDir": "src/client",
     "jsx": "react-jsx",
+    "emitDeclarationOnly": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
   "include": ["src/client/**/*"]

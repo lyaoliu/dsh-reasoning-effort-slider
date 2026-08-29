@@ -31,10 +31,25 @@ export interface AdaptGuidance {
 /** The client-facing guidance service (Client→Host over the Connection RPC). */
 export interface AdaptationService {
   diagnose(provider: string, model: string): Promise<AdaptGuidance | null>
+  /**
+   * Persist a reasoningEfforts ladder for an unconfigured model. With
+   * `allowList` the ladder mirrors exactly those wire values (a server's own
+   * rejection list); otherwise knowledge/defaults apply. True on success.
+   */
+  declareEfforts(provider: string, model: string, allowList?: readonly string[]): Promise<boolean>
+  /** Drop one unsupported level from a model's declared ladder. */
+  removeEffort(provider: string, model: string, effortId: string): Promise<boolean>
 }
 
 /** Visual effect mode for the slider. */
-export type VisualEffect = 'radiation' | 'particles' | 'gradient'
+export type VisualEffect =
+  | 'radiation'
+  | 'particles'
+  | 'gradient'
+  | 'electric'
+  | 'flame'
+  | 'starfield'
+  | 'ripple'
 
 /** Plugin configuration. */
 export interface PluginConfig {

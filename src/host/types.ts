@@ -34,7 +34,14 @@ export interface AdaptationService {
 }
 
 /** Visual effect mode for the slider. */
-export type VisualEffect = 'radiation' | 'particles' | 'gradient'
+export type VisualEffect =
+  | 'radiation'
+  | 'particles'
+  | 'gradient'
+  | 'electric'
+  | 'flame'
+  | 'starfield'
+  | 'ripple'
 
 /** Plugin configuration. */
 export interface PluginConfig {
