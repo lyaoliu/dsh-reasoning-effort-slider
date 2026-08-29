@@ -9,14 +9,17 @@ DSH 推理强度滑块插件，支持 7 档调节，带有鲸落妈妈皮肤和 
 - **chibi 小人**: 根据当前档位切换动画帧
 - **自动声明**: 未配置的模型拖滑块时自动写入 settings.yaml（无需重启）
 - **自愈机制**: 服务器拒绝非法档位时，自动从报错中解析合法列表并重写配置
-- **知识库**: 内置模型→档位映射（含 wire 值 off→none 等）
+- **知识库**: 内置模型档位映射，含 wire 值转换（off→none 等）
+  - `glm-5.2`（zai-coding-cn）: 6 档（无 max）
+  - `kimi-k3`（zai-coding-cn）: 3 档（low/high/max）
+  - `deepseek-v4-flash`（sensenova）: 5 档（off→none wire，无 minimal/max）
 - **兼容性自动修复**: pi-ai 模型自动写入 `supportsDeveloperRole: false`
 - **宿主日志**: 声明/自愈失败时输出警告日志
 
 ## 安装
 
 ```powershell
-dsh plugin --profile web add github:lyaoliu/tt#main
+dsh plugin --profile web add github:lyaoliu/dsh-reasoning-effort-slider#main
 dsh --profile web --dump-config
 ```
 
@@ -27,7 +30,7 @@ dsh --profile web --dump-config
 在 `~/.dsh/settings.yaml` 中：
 
 ```yaml
-dsh-reasoning-effort-slider:
+dsh-reasoning-effort:
   enabled: true
   visualEffect: radiation  # radiation | particles | gradient
 ```
