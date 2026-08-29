@@ -1,11 +1,15 @@
 {
-  "name": "dsh-reasoning-effort-slider",
+  "name": "@lyaoliu/dsh-reasoning-effort-slider",
   "version": "0.1.0",
   "description": "DSH reasoning effort slider with 7 levels and cool visual effects",
   "type": "module",
   "packageManager": "pnpm@9.0.0",
   "main": "lib/host/index.js",
   "types": "lib/host/index.d.ts",
+  "repository": "https://github.com/lyaoliu/dsh-reasoning-effort-slider.git",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "exports": {
     ".": {
       "types": "./lib/host/index.d.ts",
