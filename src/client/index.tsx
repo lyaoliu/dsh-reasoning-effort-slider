@@ -94,6 +94,7 @@ function sliderLevels(state: ModelDirectoryState): readonly EffortLevel[] {
  * any residual same-id duplicates; first occurrence wins.
  */
 function visibleGroups(state: ModelDirectoryState): ModelDirectoryState['groups'] {
+  if (!Array.isArray(state?.groups)) return []
   const seenIds = new Set<string>()
   const groups: ModelDirectoryState['groups'][number][] = []
   for (const group of state.groups) {
@@ -152,6 +153,10 @@ const EFFORT_ERROR_RE = /reasoning[._ ]?effort|ReasoningEffort/i
 
 /** Latest turn-error node, or null; stable identity for useSession selectors. */
 function selectLatestTurnError(snapshot: ConversationSnapshotLike): { seq: number; message: string } | null {
+  // The framework-provided useSession snapshot does not always carry a
+  // `nodes` array (empty session, different projection shape). The selector
+  // must never throw — the slot boundary would abdicate the whole seat.
+  if (!Array.isArray(snapshot?.nodes)) return null
   let latest: { seq: number; message: string } | null = null
   for (const node of snapshot.nodes) {
     if (node.kind === 'turn-error' && typeof node.seq === 'number' && typeof node.message === 'string') {
@@ -442,11 +447,11 @@ function AdvancedModelSelect({ locked, available, controller, directory, load, s
               {state.status === 'loading' && visibleGroups(state).length === 0 ? (
                 <div className="re-model-status">正在加载模型…</div>
               ) : null}
-              {state.groups.map((group) => (
+              {visibleGroups(state).map((group) => (
                 <section key={group.id}>
                   <div className="re-model-group-title">{group.name}</div>
-                  {group.models.map((model) => {
-                    const selected = state.current?.provider === group.id && state.current.model === model.id
+                  {(group.models ?? []).map((model) => {
+                    const selected = state.current?.provider === group.id && state.current?.model === model.id
                     return (
                       <button
                         key={model.id}
@@ -469,7 +474,7 @@ function AdvancedModelSelect({ locked, available, controller, directory, load, s
                   })}
                 </section>
               ))}
-              {state.status === 'ready' && visibleGroups(state).every((group) => group.models.length === 0) ? (
+              {state.status === 'ready' && visibleGroups(state).every((group) => (group.models ?? []).length === 0) ? (
                 <div className="re-model-status">没有可用模型</div>
               ) : null}
               {state.error === null ? null : <div className="re-model-error">{state.error}</div>}
@@ -518,7 +523,11 @@ function AdvancedModelSelect({ locked, available, controller, directory, load, s
   )
 }
 
-const inject = ['slots', 'modelDirectories', 'connection']
+// `modelDirectories.directoryFor` internally touches `remote.session`; the
+// client context must declare it (mirroring dsh-client-ui-model-selection's
+// own inject list) or the service proxy throws "cannot get property
+// 'remote.session' without inject" and the slot boundary abdicates us.
+const inject = ['slots', 'modelDirectories', 'connection', 'remote', 'remote.session']
 
 function apply(ctx: ClientContext) {
   const slots = ctx.get('slots')
@@ -548,16 +557,24 @@ function apply(ctx: ClientContext) {
     ),
   )
 
+  console.log('[reasoning-effort-slider] client apply called', { slots: !!slots, modelDirectories: !!modelDirectories })
   // Model seat
   ctx.slots.inject(SLOT, () => {
+    console.log('[reasoning-effort-slider] slot inject callback fired')
     let disposeModelSeat: (() => void) | undefined
     const syncModelSeat = () => {
       if (!enabledStore.getSnapshot()) {
+        console.log('[reasoning-effort-slider] disabled, disposing seat')
         disposeModelSeat?.()
         disposeModelSeat = undefined
         return
       }
       if (disposeModelSeat !== undefined) return
+      // `conversation.input.model` is a `single` slot and the slots system
+      // renders the LOWEST-priority registration (entries sorted ascending,
+      // first live entry wins). The built-in seat registers at 0, so we must
+      // go negative to shadow it — a positive priority would lose silently.
+      console.log('[reasoning-effort-slider] registering slot with priority -100')
       disposeModelSeat = ctx.slots.register(
         {
           name: SLOT,
