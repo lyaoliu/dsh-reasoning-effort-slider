@@ -1,4 +1,4 @@
 # dsh-reasoning-effort-slider bundle patch
 - insert:
     - id: reasoning-effort-slider
-      name: 'dsh-reasoning-effort-slider'
+      name: '@lyaoliu/dsh-reasoning-effort-slider'
