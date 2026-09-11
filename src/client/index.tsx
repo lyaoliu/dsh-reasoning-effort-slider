@@ -135,55 +135,135 @@ interface ModelSeatProps {
   readonly load: () => void
   readonly select: (selection: ModelSelection) => Promise<boolean>
   readonly adapt: AdaptationService | null
-  /** Framework-provided conversation snapshot hook (session-scope slots). */
-  readonly useSession?: <T>(selector: (snapshot: ConversationSnapshotLike) => T) => T
+  /**
+   * Framework-provided CHAT snapshot hook (session-scope slots). This is
+   * `useChat` — NOT `useSession`: turn-error nodes live in the chat snapshot's
+   * `nodes` Map, while `useSession` yields the session snapshot (queue/running,
+   * no conversation nodes). Reading `useSession` here left `turnError` forever
+   * null, so the self-heal never fired.
+   */
+  readonly useChat?: <T>(selector: (snapshot: ConversationSnapshotLike) => T) => T
 }
 
 /** Structural slice of a conversation snapshot this plugin reacts to. */
 interface ConversationSnapshotLike {
-  nodes: readonly {
-    kind?: string
-    seq?: number
-    message?: string
-    isError?: boolean
-  }[]
+  /** A Map of seq→node (current DSH shape) OR an array of nodes (older builds). */
+  nodes:
+    | ReadonlyMap<number | string, ConversationNodeLike>
+    | readonly ConversationNodeLike[]
+    | undefined
 }
 
-const EFFORT_ERROR_RE = /reasoning[._ ]?effort|ReasoningEffort/i
+interface ConversationNodeLike {
+  kind?: string
+  seq?: number
+  data?: { seq?: number; message?: string; code?: string } | null
+  message?: string
+  isError?: boolean
+}
 
-/** Latest turn-error node, or null; stable identity for useSession selectors. */
-function selectLatestTurnError(snapshot: ConversationSnapshotLike): { seq: number; message: string } | null {
-  // The framework-provided useSession snapshot does not always carry a
-  // `nodes` array (empty session, different projection shape). The selector
-  // must never throw — the slot boundary would abdicate the whole seat.
-  if (!Array.isArray(snapshot?.nodes)) return null
+/**
+ * Latest turn-error node, or null; stable identity for useSession selectors.
+ * Tolerates every observed snapshot shape: nodes may be a Map or an array, and
+ * the failure's message may live at `node.message` or `node.data.message`.
+ * The selector must never throw — the slot boundary would abdicate the whole seat.
+ */
+function selectLatestTurnError(snapshot: ConversationSnapshotLike | undefined): { seq: number; message: string } | null {
+  const raw = snapshot?.nodes
+  if (raw === undefined || raw === null) return null
+  // Map (current DSH) iterates values; arrays iterate elements directly.
+  const iterable: Iterable<ConversationNodeLike> =
+    typeof (raw as ReadonlyMap<unknown, ConversationNodeLike>).values === 'function'
+      ? (raw as ReadonlyMap<unknown, ConversationNodeLike>).values()
+      : (raw as readonly ConversationNodeLike[])
+
   let latest: { seq: number; message: string } | null = null
-  for (const node of snapshot.nodes) {
-    if (node.kind === 'turn-error' && typeof node.seq === 'number' && typeof node.message === 'string') {
-      if (latest === null || node.seq > latest.seq) latest = { seq: node.seq, message: node.message }
-    }
+  for (const node of iterable) {
+    if (node === null || typeof node !== 'object') continue
+    if (node.kind !== 'turn-error') continue
+    const seq = typeof node.seq === 'number' ? node.seq : node.data?.seq
+    const message = typeof node.message === 'string' ? node.message : node.data?.message
+    if (typeof seq !== 'number' || typeof message !== 'string' || message.length === 0) continue
+    if (latest === null || seq > latest.seq) latest = { seq, message }
   }
   return latest
 }
 
-/** "should be one of: low, medium, …" → the enumerated wire values. */
-function extractAllowList(message: string): string[] | null {
-  const match = /one of[:\s]+([A-Za-z0-9_,\s"'-]+)/i.exec(message)
-  if (match === null) return null
-  const tokens = match[1]
-    .split(/[,\s]+/)
-    .map((token) => token.replace(/["']/g, '').trim().toLowerCase())
-    .filter((token) => token.length > 0)
-  return tokens.length > 0 ? [...new Set(tokens)] : null
+/**
+ * The closed vocabulary of level ids pi-ai will accept in a `reasoningEfforts`
+ * ladder (`THINKING_LEVELS`), plus `none` — the "no thinking" wire spelling
+ * some providers use in place of `off`. This is an authoritative enum, not a
+ * guess: the ladder can only ever contain these words, so scanning for them is
+ * how we read a server's allow-list without ever learning how it phrases one.
+ */
+const EFFORT_WORDS = ['off', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+
+/**
+ * One level name as a whole word. `\b` keeps "maximum", "allow", "higher" etc.
+ * from being matched, while still catching every quoting style around the word
+ * (`"high"`, `'high'`, `high`, `high,`). Alternation order is irrelevant for a
+ * matchAll scan; `xhigh` is preferred simply by appearing first when the two
+ * overlap is impossible under `\b` (x is a word char, so `high` inside `xhigh`
+ * has no leading boundary).
+ */
+const EFFORT_WORD_RE = /\b(off|none|minimal|low|medium|high|xhigh|max)\b/gi
+
+/** Every level name the server mentioned anywhere in the message. */
+function scanEffortWords(message: string): Set<string> {
+  const found = new Set<string>()
+  for (const match of message.matchAll(EFFORT_WORD_RE)) found.add(match[1].toLowerCase())
+  return found
 }
 
-/** `… does not support reasoning effort "max"` → "max". */
-function extractOffender(message: string): string | null {
-  const match = /(?:effort|level)["':\s]+["']([a-z][a-z0-9_-]*)["']/i.exec(message)
-  return match !== null ? match[1]!.toLowerCase() : null
+/**
+ * Is a turn failure about reasoning effort? Signal = the LEVEL WORDS
+ * themselves, not the wrapper word ("effort"/"reasoning"/"thinking") — providers
+ * word the parameter differently ("reasoning effort", "thinking", or nothing at
+ * all when the value only shows up in the error's structured `param` field),
+ * but the accepted level values are a stable closed enum. An enumeration lists
+ * ≥2 levels; a single bare level is trusted only alongside a wrapper word, so a
+ * stray "low" (e.g. "context too low") can never shrink the ladder.
+ */
+function isEffortError(message: string): boolean {
+  const words = scanEffortWords(message)
+  if (words.size >= 2) return true
+  if (words.size === 1) return /\breasoning[._ ]?effort\b|\bReasoningEffort\b|\beffort\b/i.test(message)
+  return false
 }
 
-function AdvancedModelSelect({ locked, available, controller, directory, load, select, adapt, useSession }: ModelSeatProps) {
+/**
+ * Level(s) the server is *rejecting*. A rejection names the parameter and then
+ * the offending value; the value is only ever a vocabulary word, so this stays
+ * bounded regardless of wording:
+ *   "Unexpected reasoning effort high."
+ *   "does not support reasoning effort \"max\""
+ */
+function scanOffenders(message: string): Set<string> {
+  const offenders = new Set<string>()
+  // Trailing `(?![a-z0-9_-])` (not `\b`) blocks prefix overlap ("maximal" must
+  // not read as "max") while still allowing a closing quote or punctuation to
+  // follow the word — `\b` would fail on `"max"` (quote+space has no boundary).
+  const re = /\b(?:reasoning[._ ]?effort|effort|level)\s+["']?(off|none|minimal|low|medium|high|xhigh|max)["']?(?![a-z0-9_-])/gi
+  for (const match of message.matchAll(re)) offenders.add(match[1].toLowerCase())
+  return offenders
+}
+
+/**
+ * Server-accepted levels = (every level it mentioned) minus (what it rejected
+ * and what we ourselves just committed). Sentence structure is never consulted,
+ * so any provider wording — or language — that names level words still heals.
+ * Returns null only when nothing conclusive remains.
+ */
+function extractAllowList(message: string, committedId?: string): string[] | null {
+  const found = scanEffortWords(message)
+  if (found.size === 0) return null
+  const offenders = scanOffenders(message)
+  if (committedId !== undefined && committedId !== '') offenders.add(committedId.toLowerCase())
+  const allow = EFFORT_WORDS.filter((word) => found.has(word) && !offenders.has(word))
+  return allow.length > 0 ? allow : null
+}
+
+function AdvancedModelSelect({ locked, available, controller, directory, load, select, adapt, useChat }: ModelSeatProps) {
   const state = useSyncExternalStore(
     (notify) => directory.subscribe(notify),
     () => directory.getSnapshot(),
@@ -201,7 +281,6 @@ function AdvancedModelSelect({ locked, available, controller, directory, load, s
   const chibi = useSyncExternalStore(chibiStore.subscribe, chibiStore.getSnapshot)
 
   const [effort, setEffort] = useState('')
-  const [preview, setPreview] = useState(0)
   const [committing, setCommitting] = useState(false)
   const [notice, setNotice] = useState('')
   const noticeTimerRef = useRef<number | undefined>(undefined)
@@ -239,7 +318,6 @@ function AdvancedModelSelect({ locked, available, controller, directory, load, s
     const index = effectiveEffortIndex(levels, state)
     committedIdRef.current = levels[index]?.id ?? ''
     setEffort(committedIdRef.current)
-    setPreview(index)
   }, [levels, state])
 
   const commit = useCallback((raw: number) => {
@@ -262,6 +340,11 @@ function AdvancedModelSelect({ locked, available, controller, directory, load, s
         // first (host writes + hot reload), then re-read so select() passes
         // the host's capability validation instead of bouncing off it.
         const advertised = currentModel(fresh)?.reasoning?.efforts
+        // Why no ladder could be installed, when that is what happened. The
+        // rejection notice below reports this real reason instead of claiming a
+        // declaration "did not take effect" — the earlier notice was also
+        // overwritten by the later one, so the cause never reached the user.
+        let declareFailure: string | null = null
         if ((advertised === undefined || advertised.length < 2) && adapt !== null) {
           try {
             const declared = await adapt.declareEfforts(models.current.provider, models.current.model)
@@ -276,26 +359,34 @@ function AdvancedModelSelect({ locked, available, controller, directory, load, s
                 error: null,
               }
             } else {
-              showNotice('自动声明档位失败（原因见控制台），本次选择可能不被接受')
+              declareFailure = '宿主未接受档位声明'
             }
           } catch (error) {
-            showNotice(`自动声明档位失败：${error instanceof Error ? error.message : String(error)}`)
+            declareFailure = error instanceof Error ? error.message : String(error)
           }
         }
         // Target resolution goes through the HOST-advertised ladder only —
         // the rendered fallback (client DEFAULT_LEVELS) must never select an
         // id the host catalog does not know, or every dispatch would bounce.
+        // Resolve the index against the SAME freshly-loaded catalog that
+        // validation below uses. `levels` is whatever the slider last rendered
+        // — the fallback ladder when the directory had not resolved yet — so
+        // reading the target out of it while validating against `fresh`
+        // cancelled picks the host would have accepted.
         const hostLevels = currentModel(fresh)?.reasoning?.efforts ?? []
-        const wantedId = levels[clampIndex(raw, levels.length)]?.id ?? ''
+        const freshLevels = sliderLevels(fresh)
+        const wantedId = freshLevels[clampIndex(raw, freshLevels.length)]?.id ?? ''
         const hostIndex = hostLevels.findIndex((level) => level.id === wantedId)
         if (hostIndex < 0) {
-          showNotice(`宿主目录没有档位 "${wantedId}"（自动声明未生效），已取消本次选择`)
+          showNotice(
+            declareFailure === null
+              ? `宿主目录没有档位 "${wantedId}"，已取消本次选择`
+              : `无法为该模型设置推理强度：${declareFailure}`,
+          )
           setEffort(previous)
-          setPreview(Math.max(0, effortIndex(levels, previous)))
           return
         }
         setEffort(wantedId)
-        setPreview(hostIndex)
         await select({
           provider: models.current.provider,
           model: models.current.model,
@@ -307,10 +398,8 @@ function AdvancedModelSelect({ locked, available, controller, directory, load, s
         const settledId = hostLevels[settled]?.id ?? wantedId
         committedIdRef.current = settledId
         setEffort(settledId)
-        setPreview(Math.max(0, effortIndex(levels, settledId)))
       } catch {
         setEffort(previous)
-        setPreview(Math.max(0, effortIndex(levels, previous)))
       } finally {
         committingRef.current = false
         setCommitting(false)
@@ -319,7 +408,7 @@ function AdvancedModelSelect({ locked, available, controller, directory, load, s
     return commitQueueRef.current
   }, [adapt, controller, levels, select])
 
-  const turnError = typeof useSession === 'function' ? useSession(selectLatestTurnError) : null
+  const turnError = typeof useChat === 'function' ? useChat(selectLatestTurnError) : null
   const healSeqRef = useRef(0)
 
   /**
@@ -337,13 +426,17 @@ function AdvancedModelSelect({ locked, available, controller, directory, load, s
       commitQueueRef.current = commitQueueRef.current.then(async () => {
         const previousLevels = sliderLevels(controller.store.getSnapshot())
         try {
-          const list = extractAllowList(message)
+          // The offender is the level we just dispatched — known from our own
+          // state, never scraped out of prose. Feed it to the allow-list scan
+          // so the server's echo of "reasoning effort high" is never mistaken
+          // for an accepted level, then fall back to dropping it outright.
+          const offender = committedIdRef.current
+          const list = extractAllowList(message, offender)
           let healed = false
           if (list !== null) {
             healed = await adapt.declareEfforts(provider, model, list)
-          } else {
-            const offender = extractOffender(message)
-            if (offender !== null) healed = await adapt.removeEffort(provider, model, offender)
+          } else if (offender !== '') {
+            healed = await adapt.removeEffort(provider, model, offender)
           }
           if (!healed) return
           await controller.load()
@@ -376,7 +469,7 @@ function AdvancedModelSelect({ locked, available, controller, directory, load, s
     if (turnError === null || adapt === null) return
     if (turnError.seq <= healSeqRef.current) return
     healSeqRef.current = turnError.seq
-    if (!EFFORT_ERROR_RE.test(turnError.message)) return
+    if (!isEffortError(turnError.message)) return
     void healFromError(turnError.message)
   }, [turnError, adapt, healFromError])
 
@@ -488,7 +581,6 @@ function AdvancedModelSelect({ locked, available, controller, directory, load, s
                     currentId={effort}
                     onEffortChange={(id) => {
                       const idx = levels.findIndex((l) => l.id === id)
-                      setPreview(idx)
                       commit(idx)
                     }}
                     onDraggingChange={(dragging) => {
@@ -523,84 +615,97 @@ function AdvancedModelSelect({ locked, available, controller, directory, load, s
   )
 }
 
-// `modelDirectories.directoryFor` internally touches `remote.session`; the
-// client context must declare it (mirroring dsh-client-ui-model-selection's
-// own inject list) or the service proxy throws "cannot get property
-// 'remote.session' without inject" and the slot boundary abdicates us.
-const inject = ['slots', 'modelDirectories', 'connection', 'remote', 'remote.session']
+// `modelDirectories.directoryFor` internally touches `remote.session`. The
+// built-in model-selection keeps `modelDirectories` OUT of the top-level
+// inject list and only declares it inside `ctx.inject([...], scope => ...)`:
+// the scope then yields the real service object, safe to close over and call
+// later from the slot render callback. Declaring `modelDirectories` at the
+// top level makes the scope hand back a lazy proxy whose `.directoryFor`
+// re-validates against the injection context at call time and throws
+// "cannot get property 'remote.session' without inject" (0.1.2-rc.1 / DSH
+// 2.0.5). Mirror the built-in: top level keeps slots/connection/remote,
+// modelDirectories comes from the inject scope only.
+const inject = ['slots', 'connection', 'remote', 'remote.session']
 
 function apply(ctx: ClientContext) {
-  const slots = ctx.get('slots')
-  if (!slots) return
+  ctx.inject(['slots', 'modelDirectories', 'connection', 'remote', 'remote.session'], (scope) => {
+    const slots = scope.get('slots')
+    if (!slots) return
 
-  const modelDirectories = ctx.get('modelDirectories') as {
-    directoryFor(sessionId: string): ModelDirectory
-  } | undefined
-  if (modelDirectories === undefined) return
+    // Resolve through the inject scope like the built-in model-selection:
+    // `scope.modelDirectories` yields the real service object (safe to close
+    // over); `ctx.get('modelDirectories')` at apply time is a lazy proxy that
+    // re-validates on every property access and blows up outside the
+    // injection context.
+    const modelDirectories = scope.modelDirectories as {
+      directoryFor(sessionId: string): ModelDirectory
+    } | undefined
+    if (modelDirectories === undefined) return
 
-  const connection = ctx.get('connection') as { rpc?: HostRpc } | undefined
-  const adapt = makeAdaptationService(connection?.rpc)
+    const connection = scope.get('connection') as { rpc?: HostRpc } | undefined
+    const adapt = makeAdaptationService(connection?.rpc)
 
-  ctx.effect(() => {
-    const style = document.createElement('style')
-    style.dataset.plugin = 'dsh-reasoning-effort-slider'
-    style.textContent = CSS
-    document.head.appendChild(style)
-    return () => style.remove()
-  }, 'reasoning-effort-slider: styles')
+    scope.effect(() => {
+      const style = document.createElement('style')
+      style.dataset.plugin = 'dsh-reasoning-effort-slider'
+      style.textContent = CSS
+      document.head.appendChild(style)
+      return () => style.remove()
+    }, 'reasoning-effort-slider: styles')
 
-  // Register settings item
-  ctx.slots.inject(SETTINGS_SLOT, () =>
-    ctx.slots.register(
-      { name: SETTINGS_SLOT, id: 'reasoning-effort-slider-enabled', order: 15 },
-      () => React.createElement(SettingsPanel),
-    ),
-  )
+    // Register settings item
+    scope.slots.inject(SETTINGS_SLOT, () =>
+      scope.slots.register(
+        { name: SETTINGS_SLOT, id: 'reasoning-effort-slider-enabled', order: 15 },
+        () => React.createElement(SettingsPanel),
+      ),
+    )
 
-  console.log('[reasoning-effort-slider] client apply called', { slots: !!slots, modelDirectories: !!modelDirectories })
-  // Model seat
-  ctx.slots.inject(SLOT, () => {
-    console.log('[reasoning-effort-slider] slot inject callback fired')
-    let disposeModelSeat: (() => void) | undefined
-    const syncModelSeat = () => {
-      if (!enabledStore.getSnapshot()) {
-        console.log('[reasoning-effort-slider] disabled, disposing seat')
-        disposeModelSeat?.()
-        disposeModelSeat = undefined
-        return
-      }
-      if (disposeModelSeat !== undefined) return
-      // `conversation.input.model` is a `single` slot and the slots system
-      // renders the LOWEST-priority registration (entries sorted ascending,
-      // first live entry wins). The built-in seat registers at 0, so we must
-      // go negative to shadow it — a positive priority would lose silently.
-      console.log('[reasoning-effort-slider] registering slot with priority -100')
-      disposeModelSeat = ctx.slots.register(
-        {
-          name: SLOT,
-          priority: -100,
-          inject: (sessionId: string) => {
-            const controller = modelDirectories.directoryFor(sessionId)
-            return {
-              available: true,
-              controller,
-              directory: controller.store,
-              load: () => controller.load().then(() => undefined, () => undefined),
-              select: (selection: ModelSelection) => controller.select(selection).then(() => true, () => false),
-              adapt,
-            }
+    console.log('[reasoning-effort-slider] client apply called', { slots: !!slots, modelDirectories: !!modelDirectories })
+    // Model seat
+    scope.slots.inject(SLOT, () => {
+      console.log('[reasoning-effort-slider] slot inject callback fired')
+      let disposeModelSeat: (() => void) | undefined
+      const syncModelSeat = () => {
+        if (!enabledStore.getSnapshot()) {
+          console.log('[reasoning-effort-slider] disabled, disposing seat')
+          disposeModelSeat?.()
+          disposeModelSeat = undefined
+          return
+        }
+        if (disposeModelSeat !== undefined) return
+        // `conversation.input.model` is a `single` slot and the slots system
+        // renders the LOWEST-priority registration (entries sorted ascending,
+        // first live entry wins). The built-in seat registers at 0, so we must
+        // go negative to shadow it — a positive priority would lose silently.
+        console.log('[reasoning-effort-slider] registering slot with priority -100')
+        disposeModelSeat = scope.slots.register(
+          {
+            name: SLOT,
+            priority: -100,
+            inject: (sessionId: string) => {
+              const controller = modelDirectories.directoryFor(sessionId)
+              return {
+                available: true,
+                controller,
+                directory: controller.store,
+                load: () => controller.load().then(() => undefined, () => undefined),
+                select: (selection: ModelSelection) => controller.select(selection).then(() => true, () => false),
+                adapt,
+              }
+            },
           },
-        },
-        AdvancedModelSelect,
-      )
-    }
+          AdvancedModelSelect,
+        )
+      }
 
-    const unsubscribe = enabledStore.subscribe(syncModelSeat)
-    syncModelSeat()
-    return () => {
-      unsubscribe()
-      disposeModelSeat?.()
-    }
+      const unsubscribe = enabledStore.subscribe(syncModelSeat)
+      syncModelSeat()
+      return () => {
+        unsubscribe()
+        disposeModelSeat?.()
+      }
+    })
   })
 }
 
