@@ -47,16 +47,18 @@ export function SettingsPanel() {
 
   return React.createElement('div', { style: { padding: '12px' } },
     React.createElement('div', { style: { display: 'flex', gap: '16px', marginBottom: '12px' } },
-      React.createElement('label', { style: { display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' } },
+      React.createElement('label', { className: 'dsh-res-toggle' },
         React.createElement('input', {
+          className: 'dsh-res-toggle-box',
           type: 'checkbox',
           checked: enabled,
           onChange: (e: any) => toggleEnabled(e.target.checked),
         }),
         ' 启用推理强度滑块'
       ),
-      React.createElement('label', { style: { display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' } },
+      React.createElement('label', { className: 'dsh-res-toggle' },
         React.createElement('input', {
+          className: 'dsh-res-toggle-box',
           type: 'checkbox',
           checked: chibi,
           onChange: (e: any) => toggleChibi(e.target.checked),

@@ -283,6 +283,32 @@ body[data-ds-dark-theme] .re-model-trigger { color: var(--dsw-alias-label-primar
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/*
+ * Settings panel toggle row.
+ *
+ * The host renders this panel inside its own settings slot, whose inherited
+ * font differs between desktop shells (community DSH Desktop vs the official
+ * DeepSeek Harness app). Unstyled labels therefore rendered larger in the
+ * official app, so the type scale is pinned here to the host's own row size
+ * (14px/22px) instead of inheriting it.
+ */
+.dsh-res-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: var(--dsw-alias-label-primary, #15171b);
+  font-size: 14px;
+  line-height: 22px;
+}
+.dsh-res-toggle-box {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--dsw-static-deepseek-500, #4d70ff);
+}
+
 .dsh-res-effects-label {
   display: block;
   margin-bottom: 8px;
