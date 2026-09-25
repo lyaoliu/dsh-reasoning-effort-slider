@@ -40,11 +40,22 @@ const CHINESE_NAMES: Record<string, string> = {
 
 interface HostSettingsDescriptor {
   ns: string
+  /** Live effective value (dsh-settings 0.1.7+). */
+  value?: unknown
+  /** Inherited/base layer value. */
+  base?: unknown
+  /** User-layer override. */
   user?: unknown
+  revision?: number
+  applies?: string
 }
 
 interface HostSettingsService {
-  get(ns: string): unknown
+  /**
+   * Legacy namespace read. Removed in dsh-settings 0.1.7 (`settings.get is not
+   * a function`), so it is optional and only used as a fallback.
+   */
+  get?(ns: string): unknown
   describe?(options?: { redactSecrets?: boolean }): HostSettingsDescriptor[]
   update?(ns: string, patch: unknown): Promise<void>
 }
@@ -80,9 +91,44 @@ function failResult(code: string, message: string): JsonObject {
   return { ok: false, error: { code, message } }
 }
 
+/**
+ * Read one namespace's live value through the settings service.
+ *
+ * dsh-settings 0.1.7 removed the `settings.get(ns)` method (the read path is
+ * now `describe()` → `descriptor.value`), which made every declare-efforts
+ * call fail with "settings.get is not a function". Read through `describe()`
+ * first and keep the legacy `get` as a fallback so the plugin also works on
+ * older hosts.
+ */
+function readNamespaceValue(settings: HostSettingsService, ns: string): unknown {
+  if (typeof settings.describe === 'function') {
+    try {
+      const descriptors = settings.describe()
+      if (Array.isArray(descriptors)) {
+        const hit = descriptors.find((descriptor) => isRecord(descriptor) && descriptor.ns === ns)
+        if (hit !== undefined) {
+          if (isRecord(hit.value)) return hit.value
+          if (isRecord(hit.user)) return hit.user
+          if (isRecord(hit.base)) return hit.base
+        }
+      }
+    } catch {
+      /* unreadable through describe(): fall back to the legacy read */
+    }
+  }
+  if (typeof settings.get === 'function') {
+    try {
+      return settings.get(ns)
+    } catch {
+      /* unreadable namespace: defaults apply */
+    }
+  }
+  return undefined
+}
+
 /** Read plugin config from the settings namespace, applying defaults. */
 function readPluginConfig(settings: HostSettingsService): PluginConfig {
-  const ns = settings.get(STORE_NS)
+  const ns = readNamespaceValue(settings, STORE_NS)
   return {
     enabled: true,
     visualEffect: 'radiation',
